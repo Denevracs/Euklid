@@ -1,0 +1,57 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: euclid-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: euclid
+      POSTGRES_PASSWORD: euclid
+      POSTGRES_DB: euclid
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U euclid -d euclid']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: euclid-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/neo4j-password
+    ports:
+      - '7474:7474'
+      - '7687:7687'
+    volumes:
+      - neo4j-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'cypher-shell --username neo4j --password neo4j-password "RETURN 1"']
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # web:
+  #   build: .
+  #   command: pnpm --filter @euclid/web dev
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   env_file: .env
+
+  # api:
+  #   build: .
+  #   command: pnpm --filter @euclid/api dev
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   env_file: .env
+
+volumes:
+  postgres-data:
+  neo4j-data:

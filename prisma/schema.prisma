@@ -1,0 +1,350 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum NodeType {
+  DEFINITION
+  AXIOM
+  THEOREM
+  OBSERVATION
+  COUNTEREXAMPLE
+  APPLICATION
+}
+
+enum NodeStatus {
+  HYPOTHETICAL
+  UNDER_REVIEW
+  PROVEN
+  DISPROVEN
+  REVISED
+  PROBABILISTIC
+}
+
+enum EdgeKind {
+  DEPENDS_ON
+  PROVES
+  DISPROVES
+  EXTENDS
+  ANALOGOUS_TO
+}
+
+enum EvidenceKind {
+  FORMAL_PROOF
+  REPLICATION
+  CITATION
+  DATASET
+}
+
+enum ActivityAction {
+  SUPPORT
+  CHALLENGE
+  CITE
+  REPLICATE
+  FORK
+}
+
+enum Role {
+  MEMBER
+  CONTRIBUTOR
+  REVIEWER
+  CURATOR
+  EDITOR
+  ADMIN
+}
+
+enum Stance {
+  PROVEN
+  DISPROVEN
+  PROBABILISTIC
+}
+
+enum ReactionType {
+  ACK
+  INSIGHT
+  ISSUE
+  CHECKED
+}
+
+enum UserRole {
+  MEMBER
+  ADMIN
+}
+
+enum ReputationTier {
+  TIER1
+  TIER2
+  TIER3
+  TIER4
+}
+
+enum VoteType {
+  AGREE
+  DISAGREE
+  REPLICATE
+  CHALLENGE
+}
+
+model User {
+  id                String             @id @default(uuid())
+  name              String?
+  email             String             @unique
+  image             String?
+  role              UserRole           @default(MEMBER)
+  handle            String?            @unique
+  display           String?
+  tier              ReputationTier     @default(TIER4)
+  roles             RoleAssignment[]
+  reputations       UserReputation[]
+  isHistorical      Boolean            @default(false)
+  nodes             Node[]             @relation("CreatedNodes")
+  evidence          Evidence[]
+  activity          Activity[]         @relation("ActorActivities")
+  reactions         Reaction[]
+  notes             Note[]
+  consensusVotes    ConsensusVote[]
+  discussions       Discussion[]
+  replies           Reply[]
+  votes             Vote[]
+  ghostReservations GhostReservation[] @relation("GhostReservationMaintainer")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+model Node {
+  id                 String              @id @default(uuid())
+  type               NodeType
+  title              String
+  statement          String
+  status             NodeStatus          @default(HYPOTHETICAL)
+  metadata           Json?
+  createdById        String
+  createdBy          User                @relation("CreatedNodes", fields: [createdById], references: [id])
+  outgoingEdges      Edge[]              @relation("OutgoingEdges")
+  incomingEdges      Edge[]              @relation("IncomingEdges")
+  evidence           Evidence[]
+  activity           Activity[]          @relation("TargetNodeActivities")
+  disciplineId       String?
+  discipline         Discipline?         @relation(fields: [disciplineId], references: [id])
+  stance             Stance              @default(PROBABILISTIC)
+  derivationsFrom    Derivation[]        @relation("DeriveFrom")
+  derivationsTo      Derivation[]        @relation("DeriveTo")
+  notes              Note[]
+  consensusVotes     ConsensusVote[]
+  consensusSnapshots ConsensusSnapshot[]
+  discussions        Discussion[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([title])
+  @@index([status])
+}
+
+model Edge {
+  id        String   @id @default(uuid())
+  fromId    String
+  toId      String
+  kind      EdgeKind
+  weight    Float    @default(1)
+  createdAt DateTime @default(now())
+
+  from Node @relation("OutgoingEdges", fields: [fromId], references: [id], onDelete: Cascade)
+  to   Node @relation("IncomingEdges", fields: [toId], references: [id], onDelete: Cascade)
+
+  @@unique([fromId, toId, kind])
+  @@index([fromId])
+  @@index([toId])
+}
+
+model Evidence {
+  id         String       @id @default(uuid())
+  nodeId     String
+  kind       EvidenceKind
+  uri        String
+  hash       String?
+  summary    String
+  confidence Float?
+  addedById  String
+  createdAt  DateTime     @default(now())
+
+  node    Node @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  addedBy User @relation(fields: [addedById], references: [id])
+
+  @@index([nodeId, kind])
+  @@index([hash])
+}
+
+model Activity {
+  id           String         @id @default(uuid())
+  actorId      String
+  action       ActivityAction
+  targetNodeId String
+  createdAt    DateTime       @default(now())
+
+  actor      User @relation("ActorActivities", fields: [actorId], references: [id])
+  targetNode Node @relation("TargetNodeActivities", fields: [targetNodeId], references: [id], onDelete: Cascade)
+
+  @@index([actorId])
+  @@index([targetNodeId])
+  @@index([action])
+}
+
+model Book {
+  id          String       @id @default(uuid())
+  title       String       @unique
+  description String?
+  disciplines Discipline[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Discipline {
+  id          String           @id @default(uuid())
+  title       String
+  description String?
+  bookId      String
+  book        Book             @relation(fields: [bookId], references: [id])
+  nodes       Node[]
+  reputations UserReputation[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Derivation {
+  id        String   @id @default(cuid())
+  fromId    String
+  toId      String
+  from      Node     @relation("DeriveFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to        Node     @relation("DeriveTo", fields: [toId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Discussion {
+  id        String   @id @default(uuid())
+  nodeId    String
+  node      Node     @relation(fields: [nodeId], references: [id])
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  replies   Reply[]
+  votes     Vote[]
+}
+
+model Reply {
+  id           String     @id @default(uuid())
+  discussionId String
+  discussion   Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  authorId     String
+  author       User       @relation(fields: [authorId], references: [id])
+  content      String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Vote {
+  id           String     @id @default(uuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  discussionId String
+  discussion   Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  type         VoteType
+  weight       Float
+  createdAt    DateTime   @default(now())
+
+  @@index([discussionId])
+  @@index([userId])
+}
+
+model Note {
+  id        String     @id @default(cuid())
+  authorId  String
+  nodeId    String?
+  parentId  String?
+  body      String
+  createdAt DateTime   @default(now())
+  node      Node?      @relation(fields: [nodeId], references: [id])
+  parent    Note?      @relation("ThreadParent", fields: [parentId], references: [id])
+  children  Note[]     @relation("ThreadParent")
+  author    User       @relation(fields: [authorId], references: [id])
+  reactions Reaction[]
+
+  @@index([nodeId])
+  @@index([authorId])
+}
+
+model Reaction {
+  id        String       @id @default(cuid())
+  noteId    String
+  userId    String
+  type      ReactionType
+  createdAt DateTime     @default(now())
+  note      Note         @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+  @@index([userId])
+}
+
+model RoleAssignment {
+  id        String   @id @default(cuid())
+  userId    String
+  scope     String?
+  role      Role
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserReputation {
+  id           String      @id @default(cuid())
+  userId       String
+  disciplineId String?
+  score        Int         @default(5)
+  updatedAt    DateTime    @updatedAt
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  discipline   Discipline? @relation(fields: [disciplineId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([disciplineId])
+}
+
+model ConsensusVote {
+  id         String   @id @default(cuid())
+  nodeId     String
+  voterId    String
+  stance     Stance
+  confidence Int      @default(50)
+  createdAt  DateTime @default(now())
+  node       Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  voter      User     @relation(fields: [voterId], references: [id], onDelete: Cascade)
+
+  @@unique([nodeId, voterId])
+  @@index([nodeId])
+  @@index([voterId])
+}
+
+model ConsensusSnapshot {
+  id        String   @id @default(cuid())
+  nodeId    String
+  status    Stance
+  tallies   Json
+  createdAt DateTime @default(now())
+  node      Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([nodeId])
+}
+
+model GhostReservation {
+  id           String  @id @default(cuid())
+  handle       String  @unique
+  display      String
+  primaryYears String?
+  bioShort     String?
+  maintainerId String?
+  maintainer   User?   @relation("GhostReservationMaintainer", fields: [maintainerId], references: [id], onDelete: SetNull)
+}

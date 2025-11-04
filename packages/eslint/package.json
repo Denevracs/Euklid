@@ -1,0 +1,12 @@
+{
+  "name": "@euclid/eslint-config",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "peerDependencies": {
+    "eslint": ">=8.57.0",
+    "eslint-config-next": "^15.0.0-canary.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0"
+  }
+}
