@@ -11,7 +11,12 @@ import edgesRoutes from './routes/edges';
 import evidenceRoutes from './routes/evidence';
 import graphRoutes from './routes/graph';
 import searchRoutes from './routes/search';
+import discussionsRoutes from './routes/discussions';
+import repliesRoutes from './routes/replies';
+import votesRoutes from './routes/votes';
+import feedRoutes from './routes/feed';
 import prismaPlugin from './plugins/prisma';
+import authTier from './plugins/authTier';
 import { env } from './lib/env';
 
 async function main() {
@@ -25,6 +30,7 @@ async function main() {
   await server.register(cors);
   await server.register(helmet);
   await server.register(prismaPlugin);
+  await server.register(authTier);
 
   await server.register(swagger, {
     openapi: {
@@ -44,6 +50,10 @@ async function main() {
   await server.register(evidenceRoutes, { prefix: '/evidence' });
   await server.register(graphRoutes, { prefix: '/graph' });
   await server.register(searchRoutes, { prefix: '/search' });
+  await server.register(discussionsRoutes, { prefix: '/discussions' });
+  await server.register(repliesRoutes, { prefix: '/replies' });
+  await server.register(votesRoutes, { prefix: '/votes' });
+  await server.register(feedRoutes, { prefix: '/feed' });
 
   try {
     await server.listen({ port: env.PORT, host: env.HOST });
