@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "packageManager": "pnpm@8.15.4",
   "scripts": {
-    "dev": "turbo run dev --parallel",
-    "build": "turbo run build",
+    "dev": "turbo run dev --parallel --filter=@euclid/web --filter=@euclid/api",
+    "build": "turbo run build --filter=@euclid/web --filter=@euclid/api",
     "test": "turbo run test",
     "lint": "turbo run lint",
     "format": "prettier --write .",
@@ -19,6 +19,8 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.19",
+    "@types/react": "^18.2.64",
+    "@types/react-dom": "^18.2.21",
     "@euclid/eslint-config": "workspace:*",
     "@prisma/client": "^5.22.0",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
@@ -43,6 +45,6 @@
     ]
   },
   "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "seed": "node prisma/seed.js"
   }
 }

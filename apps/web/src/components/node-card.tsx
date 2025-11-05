@@ -16,7 +16,7 @@ function statusVariant(status: NodeWithRelations['status']) {
   }
 }
 
-function statusLabel(status: NodeWithRelations['status'], confidence?: number) {
+function statusLabel(status: NodeWithRelations['status'], confidence?: number | null) {
   if (status === 'PROBABILISTIC' && typeof confidence === 'number') {
     return `${status} (${Math.round(confidence * 100)}% confidence)`;
   }
@@ -26,7 +26,7 @@ function statusLabel(status: NodeWithRelations['status'], confidence?: number) {
 export function NodeCard({ node }: { node: NodeWithRelations }) {
   const probabilisticConfidence =
     node.status === 'PROBABILISTIC'
-      ? node.evidence.find((item) => typeof item.confidence === 'number')?.confidence
+      ? (node.evidence.find((item) => typeof item.confidence === 'number')?.confidence ?? undefined)
       : undefined;
 
   return (

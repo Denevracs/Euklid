@@ -21,9 +21,11 @@
     "@prisma/client": "^5.22.0",
     "@tanstack/react-query": "^5.28.4",
     "@visx/network": "^3.3.0",
+    "dayjs": "^1.11.10",
     "axios": "^1.6.7",
     "clsx": "^2.1.0",
     "d3-force": "^3.0.0",
+    "dotenv": "^16.4.5",
     "lucide-react": "^0.330.0",
     "neo4j-driver": "^5.16.0",
     "next": "^14.2.5",
@@ -34,6 +36,7 @@
     "react-force-graph": "^1.42.6",
     "react-force-graph-2d": "^1.22.1",
     "react-hook-form": "^7.48.2",
+    "recharts": "^2.10.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {

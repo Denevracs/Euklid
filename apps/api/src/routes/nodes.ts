@@ -2,6 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { nodeCreateSchema, nodeUpdateSchema } from '@euclid/validation';
+import { rateLimit } from '../middleware/rateLimit';
+import { moderationGuard } from '../middleware/moderationGuard';
+import { autoFlagDetection } from '../services/moderation';
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 
@@ -24,8 +27,11 @@ const nodeDetailInclude = {
   },
 } as const;
 
+const nodeUpdatePartialSchema = nodeUpdateSchema.partial();
+
 export default async function nodesRoutes(app: FastifyInstance) {
   const r = app.withTypeProvider<ZodTypeProvider>();
+  const enforceNodeRateLimit = rateLimit('POST_NODE_LIMIT');
 
   r.get('/', async () => {
     return app.prisma.node.findMany({
@@ -57,15 +63,17 @@ export default async function nodesRoutes(app: FastifyInstance) {
   r.post(
     '/',
     {
+      onRequest: [app.authenticate, moderationGuard, app.requireNotBanned, enforceNodeRateLimit],
       schema: {
         body: nodeCreateSchema,
       },
     },
     async (request, reply) => {
-      const data = request.body;
-      // TODO: wire real auth once auth is extracted. Use first user as placeholder.
-      const [actor] = await app.prisma.user.findMany({ take: 1 });
-      const createdById = actor?.id ?? (await seedFallbackUser(app));
+      const userId = request.user?.id;
+      if (!userId) {
+        return reply.code(401).send({ message: 'Unauthorized' });
+      }
+      const data = nodeCreateSchema.parse(request.body);
       const node = await app.prisma.node.create({
         data: {
           title: data.title,
@@ -73,10 +81,10 @@ export default async function nodesRoutes(app: FastifyInstance) {
           type: data.type,
           status: data.status,
           metadata: data.metadata ?? {},
-          createdById,
+          createdById: userId,
           outgoingEdges: data.dependencies?.length
             ? {
-                create: data.dependencies.map((dependencyId) => ({
+                create: data.dependencies.map((dependencyId: string) => ({
                   toId: dependencyId,
                   kind: 'DEPENDS_ON' as const,
                   weight: 1,
@@ -86,13 +94,27 @@ export default async function nodesRoutes(app: FastifyInstance) {
           evidence: data.evidence
             ? {
                 create: data.evidence.map((evidence) => ({
-                  ...evidence,
-                  addedById: createdById,
+                  kind: evidence.kind,
+                  uri: evidence.uri,
+                  summary: evidence.summary,
+                  hash: evidence.hash,
+                  confidence: evidence.confidence,
+                  addedBy: { connect: { id: userId } },
                 })),
               }
             : undefined,
         },
         include: nodeDetailInclude,
+      });
+      if (autoFlagDetection(data.statement ?? data.title)) {
+        request.log.warn({ nodeId: node.id }, 'Auto-flag detection triggered for node content');
+      }
+      await app.prisma.user.update({
+        where: { id: userId },
+        data: {
+          postCount: { increment: 1 },
+          lastActionAt: new Date(),
+        },
       });
       reply.code(201);
       return node;
@@ -104,12 +126,12 @@ export default async function nodesRoutes(app: FastifyInstance) {
     {
       schema: {
         params: paramsSchema,
-        body: nodeUpdateSchema.partial(),
+        body: nodeUpdatePartialSchema,
       },
     },
     async (request) => {
       const { id } = request.params;
-      const body = request.body;
+      const body = nodeUpdatePartialSchema.parse(request.body);
       const node = await app.prisma.node.update({
         where: { id },
         data: {
@@ -138,15 +160,4 @@ export default async function nodesRoutes(app: FastifyInstance) {
       reply.code(204).send();
     }
   );
-}
-
-async function seedFallbackUser(app: FastifyInstance) {
-  const user = await app.prisma.user.create({
-    data: {
-      name: 'System',
-      email: `system-${Date.now()}@euclid.network`,
-      role: 'MEMBER',
-    },
-  });
-  return user.id;
 }

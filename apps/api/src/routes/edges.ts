@@ -16,8 +16,9 @@ export default async function edgesRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
+      const payload = edgeCreateSchema.parse(request.body);
       const edge = await app.prisma.edge.create({
-        data: request.body,
+        data: payload,
         include: { from: true, to: true },
       });
       reply.code(201);

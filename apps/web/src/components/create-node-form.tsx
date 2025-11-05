@@ -1,6 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import type { ZodType, ZodTypeDef } from 'zod';
 import { NodeStatus, NodeType } from '@prisma/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +9,9 @@ import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { nodeCreateSchema, type NodeCreateInput, evidenceKindEnum } from '@euclid/validation';
+import { useSession } from 'next-auth/react';
+import { apiFetch } from '@/lib/api';
+import { useRateLimitFeedback } from '@/hooks/useRateLimitFeedback';
 
 interface DependencyOption {
   id: string;
@@ -22,9 +26,18 @@ interface CreateNodeFormProps {
 export function CreateNodeForm({ dependencies }: CreateNodeFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const { data: session } = useSession();
+  const { rateLimited, handleApiError } = useRateLimitFeedback();
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const schema = nodeCreateSchema as unknown as ZodType<
+    NodeCreateInput,
+    ZodTypeDef,
+    NodeCreateInput
+  >;
 
   const form = useForm<NodeCreateInput>({
-    resolver: zodResolver(nodeCreateSchema),
+    // @ts-expect-error Workspace schema version mismatch with resolver typings
+    resolver: zodResolver(schema),
     defaultValues: {
       title: '',
       statement: '',
@@ -44,28 +57,34 @@ export function CreateNodeForm({ dependencies }: CreateNodeFormProps) {
   } = form;
 
   const evidenceFields = useFieldArray({ control, name: 'evidence' });
+  const isBanned = Boolean(session?.user?.isBanned);
 
   const onSubmit = handleSubmit(async (data) => {
+    if (isBanned) {
+      setErrorMessage('Posting is disabled while your account is suspended.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const response = await fetch('/api/nodes', {
+      const node = await apiFetch<{ id: string }>(`/nodes`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(data),
+        authenticated: true,
       });
 
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error ?? 'Failed to create node');
-      }
-
-      const body = await response.json();
-      router.push(`/nodes/${body.id}`);
+      setErrorMessage(null);
+      router.push(`/nodes/${node.id}`);
     } catch (error) {
       console.error(error);
-      window.alert(error instanceof Error ? error.message : 'Unexpected error.');
+      if (handleApiError(error)) {
+        setErrorMessage('Too many actions right now. Try again shortly.');
+      } else {
+        setErrorMessage(error instanceof Error ? error.message : 'Unexpected error.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -77,6 +96,21 @@ export function CreateNodeForm({ dependencies }: CreateNodeFormProps) {
         <CardTitle>Create a new knowledge node</CardTitle>
       </CardHeader>
       <CardContent>
+        {isBanned ? (
+          <div className="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            You cannot publish while your account is suspended.
+          </div>
+        ) : null}
+        {rateLimited ? (
+          <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+            Slow down—node publishing is rate limited. Please wait a moment.
+          </div>
+        ) : null}
+        {errorMessage ? (
+          <div className="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {errorMessage}
+          </div>
+        ) : null}
         <form className="space-y-6" onSubmit={onSubmit}>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2 text-sm font-medium">
@@ -152,6 +186,7 @@ export function CreateNodeForm({ dependencies }: CreateNodeFormProps) {
                 type="button"
                 variant="outline"
                 size="sm"
+                disabled={isSubmitting || isBanned}
                 onClick={() =>
                   evidenceFields.append({ kind: 'FORMAL_PROOF', uri: '', summary: '' })
                 }
@@ -231,6 +266,7 @@ export function CreateNodeForm({ dependencies }: CreateNodeFormProps) {
                     type="button"
                     variant="ghost"
                     size="sm"
+                    disabled={isSubmitting || isBanned}
                     onClick={() => evidenceFields.remove(index)}
                   >
                     Remove
@@ -241,7 +277,7 @@ export function CreateNodeForm({ dependencies }: CreateNodeFormProps) {
           </div>
 
           <div className="flex justify-end gap-3">
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting || isBanned}>
               {isSubmitting ? 'Creating…' : 'Create node'}
             </Button>
           </div>

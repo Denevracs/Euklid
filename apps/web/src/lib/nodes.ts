@@ -7,6 +7,8 @@ import type {
   EdgeCreateInput,
 } from '@euclid/validation';
 
+type InlineEvidenceInput = Omit<EvidenceCreateInput, 'nodeId'>;
+
 export const nodeDetailInclude = {
   createdBy: true,
   evidence: {
@@ -72,7 +74,7 @@ export async function getNodeDetail(id: string) {
 }
 
 export async function createNode(
-  input: NodeCreateInput & { evidence?: EvidenceCreateInput[]; edges?: EdgeCreateInput[] },
+  input: NodeCreateInput & { evidence?: InlineEvidenceInput[]; edges?: EdgeCreateInput[] },
   userId: string
 ) {
   return prisma.node.create({
@@ -141,10 +143,13 @@ export async function createEdge(input: EdgeCreateInput) {
 export async function createEvidence(input: EvidenceCreateInput, addedBy: string) {
   return prisma.evidence.create({
     data: {
-      ...input,
-      addedBy: {
-        connect: { id: addedBy },
-      },
+      kind: input.kind,
+      uri: input.uri,
+      summary: input.summary,
+      hash: input.hash,
+      confidence: input.confidence,
+      node: { connect: { id: input.nodeId } },
+      addedBy: { connect: { id: addedBy } },
     },
     include: {
       node: true,

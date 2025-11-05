@@ -41,10 +41,19 @@ enum EvidenceKind {
 }
 
 enum ActivityAction {
+  CREATE_NODE
+  UPDATE_NODE
+  ADD_EVIDENCE
+  CREATE_DISCUSSION
+  REPLY
+  VOTE
   SUPPORT
   CHALLENGE
+  CONTRADICT
   CITE
   REPLICATE
+  ENDORSE
+  FOLLOW
   FORK
 }
 
@@ -72,10 +81,11 @@ enum ReactionType {
 
 enum UserRole {
   MEMBER
+  MODERATOR
   ADMIN
 }
 
-enum ReputationTier {
+enum Tier {
   TIER1
   TIER2
   TIER3
@@ -89,6 +99,21 @@ enum VoteType {
   CHALLENGE
 }
 
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VerificationType {
+  EMAIL_DOMAIN
+  INSTITUTION_ID
+  DOCUMENT_ORG
+  PEER_ENDORSE
+  ORCID
+  SCHOLAR_PROFILE
+}
+
 model User {
   id                String             @id @default(uuid())
   name              String?
@@ -96,14 +121,28 @@ model User {
   image             String?
   role              UserRole           @default(MEMBER)
   handle            String?            @unique
+  displayHandle     String?            @unique
   display           String?
-  tier              ReputationTier     @default(TIER4)
+  tier              Tier               @default(TIER4)
+  bio               String?            @db.Text
+  website           String?
+  location          String?
+  expertise         String[]           @default([])
+  lastLoginAt       DateTime?
+  lastIp            String?
+  followerCount     Int                @default(0)
+  followingCount    Int                @default(0)
+  postCount         Int                @default(0)
+  discussionCount   Int                @default(0)
   roles             RoleAssignment[]
   reputations       UserReputation[]
   isHistorical      Boolean            @default(false)
+  legacySource      String?
+  legacyWorksCount  Int                @default(0)
   nodes             Node[]             @relation("CreatedNodes")
   evidence          Evidence[]
   activity          Activity[]         @relation("ActorActivities")
+  targetActivities  Activity[]         @relation("TargetUserActivities")
   reactions         Reaction[]
   notes             Note[]
   consensusVotes    ConsensusVote[]
@@ -111,8 +150,66 @@ model User {
   replies           Reply[]
   votes             Vote[]
   ghostReservations GhostReservation[] @relation("GhostReservationMaintainer")
+  verifiedDomains   String[]           @default([])
+  verifiedDocs      Int                @default(0)
+  verificationScore Int                @default(0)
+  lastTierEvalAt    DateTime?
+  verifiedAt        DateTime?
+  verifiedById      String?
+  affiliations      Json?
+  reputationHistory ReputationHistory[]
+  verificationSubmissions VerificationSubmission[]
+  reviewedVerificationSubmissions VerificationSubmission[] @relation("VerificationReviewer")
+  endorsementsGiven Endorsement[]      @relation("EndorsementsGiven")
+  endorsementsReceived Endorsement[]   @relation("EndorsementsReceived")
+  userInstitutions  UserInstitution[]
+  follows           Follow[]           @relation("FollowFollower")
+  followedBy        Follow[]           @relation("FolloweeUser")
+  feedItems         FeedItem[]
+  moderationEvents  ModerationEvent[]  @relation("ModerationEventsActor")
+  moderatedIncidents ModerationEvent[] @relation("ModerationEventsTarget")
+  flagsReported     Flag[]             @relation("FlagsReported")
+  flagsReviewed     Flag[]             @relation("FlagsReviewed")
+  warningsCount     Int                @default(0)
+  mutesCount        Int                @default(0)
+  bansCount         Int                @default(0)
+  isBanned          Boolean            @default(false)
+  lastActionAt      DateTime?
+  bannedUntil       DateTime?
+  banReason         String?
+  verifiedBy        User?              @relation("UserVerificationAdmins", fields: [verifiedById], references: [id])
+  verifiedUsers     User[]             @relation("UserVerificationAdmins")
+  auditLogs         AuditLog[]         @relation("AuditLogActor")
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
+
+  @@index([role])
+  @@index([tier])
+  @@index([lastTierEvalAt])
+  @@index([bannedUntil])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  targetType String
+  targetId   String
+  meta       Json?
+  createdAt  DateTime @default(now())
+  actor      User?    @relation("AuditLogActor", fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([targetType])
+}
+
+model AdminSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
 }
 
 model Node {
@@ -142,6 +239,10 @@ model Node {
 
   @@index([title])
   @@index([status])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([createdById])
+  @@index([disciplineId])
 }
 
 model Edge {
@@ -173,24 +274,188 @@ model Evidence {
 
   node    Node @relation(fields: [nodeId], references: [id], onDelete: Cascade)
   addedBy User @relation(fields: [addedById], references: [id])
+  activities Activity[] @relation("TargetEvidenceActivities")
 
   @@index([nodeId, kind])
   @@index([hash])
+  @@index([createdAt])
 }
 
 model Activity {
-  id           String         @id @default(uuid())
-  actorId      String
-  action       ActivityAction
-  targetNodeId String
-  createdAt    DateTime       @default(now())
+  id                 String         @id @default(uuid())
+  actorId            String
+  action             ActivityAction
+  targetNodeId       String?
+  targetDiscussionId String?
+  targetUserId       String?
+  targetDisciplineId String?
+  targetEvidenceId   String?
+  weight             Int            @default(1)
+  createdAt          DateTime       @default(now())
 
-  actor      User @relation("ActorActivities", fields: [actorId], references: [id])
-  targetNode Node @relation("TargetNodeActivities", fields: [targetNodeId], references: [id], onDelete: Cascade)
+  actor             User        @relation("ActorActivities", fields: [actorId], references: [id])
+  targetNode        Node?       @relation("TargetNodeActivities", fields: [targetNodeId], references: [id], onDelete: Cascade)
+  targetDiscussion  Discussion? @relation("TargetDiscussionActivities", fields: [targetDiscussionId], references: [id], onDelete: Cascade)
+  targetUser        User?       @relation("TargetUserActivities", fields: [targetUserId], references: [id], onDelete: Cascade)
+  targetDiscipline  Discipline? @relation("TargetDisciplineActivities", fields: [targetDisciplineId], references: [id], onDelete: Cascade)
+  targetEvidence    Evidence?   @relation("TargetEvidenceActivities", fields: [targetEvidenceId], references: [id], onDelete: Cascade)
 
+  @@index([createdAt])
   @@index([actorId])
-  @@index([targetNodeId])
   @@index([action])
+  @@index([targetNodeId])
+  @@index([targetDiscussionId])
+  @@index([targetUserId])
+  @@index([targetDisciplineId])
+  @@index([targetEvidenceId])
+}
+
+model Follow {
+  id                  String      @id @default(uuid())
+  followerId          String
+  followeeUserId      String?
+  followDisciplineId  String?
+  createdAt           DateTime    @default(now())
+
+  follower         User        @relation("FollowFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  followeeUser     User?       @relation("FolloweeUser", fields: [followeeUserId], references: [id], onDelete: Cascade)
+  followDiscipline Discipline? @relation("FollowDiscipline", fields: [followDisciplineId], references: [id], onDelete: Cascade)
+
+  @@index([followerId])
+  @@index([followeeUserId])
+  @@index([followDisciplineId])
+  @@unique([followerId, followeeUserId])
+  @@unique([followerId, followDisciplineId])
+}
+
+model ReputationHistory {
+  id        String   @id @default(uuid())
+  userId    String
+  delta     Int
+  reason    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model ModerationEvent {
+  id           String   @id @default(uuid())
+  actorId      String
+  targetUserId String?
+  targetType   String
+  targetId     String
+  action       String
+  reason       String?
+  note         String?
+  weight       Int      @default(1)
+  expiresAt    DateTime?
+  createdAt    DateTime @default(now())
+
+  actor      User @relation("ModerationEventsActor", fields: [actorId], references: [id])
+  targetUser User? @relation("ModerationEventsTarget", fields: [targetUserId], references: [id])
+
+  @@index([targetUserId])
+  @@index([action])
+}
+
+model Flag {
+  id           String   @id @default(uuid())
+  reporterId   String
+  targetType   String
+  targetId     String
+  reason       String
+  status       String   @default("PENDING")
+  createdAt    DateTime @default(now())
+  reviewedById String?
+  reviewedAt   DateTime?
+  decisionNote String?
+
+  reporter   User @relation("FlagsReported", fields: [reporterId], references: [id])
+  reviewedBy User? @relation("FlagsReviewed", fields: [reviewedById], references: [id])
+
+  @@unique([reporterId, targetType, targetId])
+  @@index([status])
+}
+
+model VerificationSubmission {
+  id          String             @id @default(uuid())
+  userId      String
+  type        VerificationType
+  status      VerificationStatus @default(PENDING)
+  payload     Json
+  reviewerId  String?
+  reviewedAt  DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  user     User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewer User? @relation("VerificationReviewer", fields: [reviewerId], references: [id])
+
+  @@index([userId, status, type])
+}
+
+model Endorsement {
+  id          String @id @default(uuid())
+  endorserId  String
+  endorseedId String
+  weight      Int    @default(1)
+  note        String?
+  createdAt   DateTime @default(now())
+
+  endorser  User @relation("EndorsementsGiven", fields: [endorserId], references: [id], onDelete: Cascade)
+  endorseed User @relation("EndorsementsReceived", fields: [endorseedId], references: [id], onDelete: Cascade)
+
+  @@unique([endorserId, endorseedId])
+  @@index([endorseedId])
+  @@index([createdAt])
+}
+
+model FeedItem {
+  id        String   @id @default(uuid())
+  ownerId   String
+  kind      String
+  refId     String
+  score     Float    @default(0)
+  payload   Json?
+  createdAt DateTime @default(now())
+  expiresAt DateTime?
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, createdAt])
+  @@index([ownerId, score])
+  @@index([createdAt])
+}
+
+model Institution {
+  id          String @id @default(uuid())
+  name        String
+  domain      String @unique
+  kind        String
+  reputation  Int    @default(50)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships UserInstitution[]
+}
+
+model UserInstitution {
+  id             String @id @default(uuid())
+  userId         String
+  institutionId  String
+  role           String
+  startAt        DateTime?
+  endAt          DateTime?
+  verified       Boolean  @default(false)
+  proofUri       String?
+  createdAt      DateTime @default(now())
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, institutionId, role])
 }
 
 model Book {
@@ -210,8 +475,12 @@ model Discipline {
   book        Book             @relation(fields: [bookId], references: [id])
   nodes       Node[]
   reputations UserReputation[]
+  activities  Activity[]       @relation("TargetDisciplineActivities")
+  followers   Follow[]         @relation("FollowDiscipline")
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+
+  @@index([createdAt])
 }
 
 model Derivation {
@@ -231,10 +500,16 @@ model Discussion {
   author    User     @relation(fields: [authorId], references: [id])
   content   String
   hidden    Boolean  @default(false)
+  contentHash String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   replies   Reply[]
   votes     Vote[]
+  activities Activity[] @relation("TargetDiscussionActivities")
+
+  @@index([createdAt])
+  @@index([authorId])
+  @@index([nodeId])
 }
 
 model Reply {
@@ -244,6 +519,8 @@ model Reply {
   authorId     String
   author       User       @relation(fields: [authorId], references: [id])
   content      String
+  hidden       Boolean    @default(false)
+  contentHash  String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 }
@@ -260,6 +537,7 @@ model Vote {
 
   @@index([discussionId])
   @@index([userId])
+  @@index([createdAt])
 }
 
 model Note {

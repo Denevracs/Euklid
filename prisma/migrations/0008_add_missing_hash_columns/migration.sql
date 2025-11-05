@@ -1,0 +1,2 @@
+ALTER TABLE "Discussion" ADD COLUMN IF NOT EXISTS "contentHash" TEXT;
+ALTER TABLE "Reply" ADD COLUMN IF NOT EXISTS "contentHash" TEXT;

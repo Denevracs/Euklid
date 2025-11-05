@@ -1,9 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { getFeed, getGlobalFeed, writeFeedCache } from '../services/feed';
 
 const feedQuerySchema = z.object({
-  userId: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+  cursor: z.string().optional(),
+  cache: z.coerce.boolean().optional(),
 });
 
 export default async function feedRoutes(app: FastifyInstance) {
@@ -12,71 +15,34 @@ export default async function feedRoutes(app: FastifyInstance) {
   r.get(
     '/',
     {
-      schema: {
-        querystring: feedQuerySchema,
-      },
+      onRequest: [app.authenticate, app.requireNotBanned],
+      schema: { querystring: feedQuerySchema },
     },
     async (request) => {
-      const { userId } = request.query;
+      const userId = request.user?.id;
+      if (!userId) {
+        throw app.httpErrors.unauthorized();
+      }
 
-      const [recentDiscussions, recentReplies, activeVoteGroups] = await Promise.all([
-        app.prisma.discussion.findMany({
-          where: { hidden: false },
-          orderBy: { createdAt: 'desc' },
-          take: 10,
-          include: {
-            node: { select: { id: true, title: true } },
-            author: { select: { id: true, name: true, tier: true } },
-          },
-        }),
-        app.prisma.reply.findMany({
-          orderBy: { createdAt: 'desc' },
-          take: 10,
-          include: {
-            discussion: {
-              select: {
-                id: true,
-                nodeId: true,
-              },
-            },
-            author: { select: { id: true, name: true, tier: true } },
-          },
-        }),
-        app.prisma.vote.groupBy({
-          by: ['discussionId'],
-          where: {
-            createdAt: {
-              gte: new Date(Date.now() - 1000 * 60 * 60 * 24),
-            },
-          },
-          _sum: { weight: true },
-          orderBy: { _sum: { weight: 'desc' } },
-          take: 5,
-        }),
-      ]);
+      const { limit, cursor, cache } = request.query;
+      const result = await getFeed(app.prisma, userId, { limit, cursor });
 
-      const discussionIds = activeVoteGroups.map((group) => group.discussionId);
-      const activeDiscussions = discussionIds.length
-        ? await app.prisma.discussion.findMany({
-            where: { id: { in: discussionIds }, hidden: false },
-            include: {
-              node: { select: { id: true, title: true } },
-              author: { select: { id: true, name: true, tier: true } },
-            },
-          })
-        : [];
+      if (cache) {
+        await writeFeedCache(app.prisma, userId, result.items);
+      }
 
-      return {
-        forUser: userId ?? request.user?.id ?? null,
-        discussions: recentDiscussions,
-        replies: recentReplies,
-        mostActive: activeDiscussions.map((discussion) => ({
-          discussion,
-          score:
-            activeVoteGroups.find((group) => group.discussionId === discussion.id)?._sum.weight ??
-            0,
-        })),
-      };
+      return result;
+    }
+  );
+
+  r.get(
+    '/global',
+    {
+      schema: { querystring: feedQuerySchema.pick({ limit: true, cursor: true }) },
+    },
+    async (request) => {
+      const { limit, cursor } = request.query;
+      return getGlobalFeed(app.prisma, { limit, cursor });
     }
   );
 }

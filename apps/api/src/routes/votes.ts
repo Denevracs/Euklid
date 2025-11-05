@@ -1,15 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import type { ReputationTier } from '@prisma/client';
 import { VoteType } from '@prisma/client';
+import type { Tier } from '@prisma/client';
 
-const voteWeights: Record<ReputationTier, number> = {
+const voteWeights: Record<Tier, number> = {
   TIER1: 1.0,
   TIER2: 0.5,
   TIER3: 0.25,
   TIER4: 0.1,
-} satisfies Record<ReputationTier, number>;
+} satisfies Record<Tier, number>;
 
 const createVoteSchema = z.object({
   discussionId: z.string().uuid('discussionId must be uuid').or(z.string().min(1)),

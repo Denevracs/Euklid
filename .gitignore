@@ -13,3 +13,4 @@ test-results
 tmp
 logs
 *.log
+*.tsbuildinfo

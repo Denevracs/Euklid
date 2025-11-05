@@ -24,7 +24,7 @@ module.exports = {
     tsconfigRootDir: process.cwd(),
   },
   plugins: ['@typescript-eslint'],
-  extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended'],
+  extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended', 'next/core-web-vitals'],
   overrides: [
     {
       files: ['apps/web/**/*.{ts,tsx,js,jsx}'],

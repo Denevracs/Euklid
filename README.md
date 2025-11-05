@@ -102,7 +102,7 @@ The compose file provisions PostgreSQL and Neo4j. Optional `web`/`api` services 
 ### Authentication
 
 - Email magic-link provider via NextAuth. Replace `EMAIL_SERVER` and `EMAIL_FROM` with a working SMTP server.
-- Swap providers later by editing `apps/web/src/lib/auth.ts`.
+- Swap providers later by editing `apps/web/src/auth.ts`.
 
 ### Optional Neo4j
 
@@ -112,6 +112,33 @@ Set `NEO4J_URI`, `NEO4J_USER`, and `NEO4J_PASSWORD` to enable the driver in both
 
 - Unit tests (Vitest) located under `apps/web/src/lib/__tests__` and `apps/api/src/lib/__tests__`.
 - Playwright configuration auto-starts the Next.js dev server. Install browsers with `pnpm --filter @euclid/web exec playwright install --with-deps`.
+- Run the follow/feed regression suite with `pnpm --filter @euclid/api test` and `pnpm --filter @euclid/web test`.
+
+## Follow & Feed
+
+- `pnpm prisma migrate dev --name follow-feed` – create new follow/feed schema migrations when iterating.
+- `pnpm db:seed` – load demo researchers, follow graph, and activity timeline.
+- `TURBO_DISABLE_REMOTE_CACHE=1 pnpm dev` – start web + API with deterministic cache busting for feed experiments.
+- Visit `http://localhost:3000/home` for the personalized feed (requires sign-in) and `/feed/global` for the 48h global highlights.
+- Profiles (`/u/[handle-or-id]`) and discipline hubs (`/d/[id]`) expose follow actions with optimistic UI updates.
+
+## Moderation & Rate Limits
+
+- Fastify middleware wraps node/discussion/reply creation to enforce per-user rate limits using `POST_NODE_LIMIT`, `POST_DISCUSSION_LIMIT`, and `POST_COMMENT_LIMIT` (24h windows).
+- Moderation middleware (`moderationGuard`) blocks banned accounts at the API edge; Next.js surfaces matching banners and disables publish/reply actions when `isBanned` is true.
+- Report content anywhere via the new flag icon — submissions go to `/moderation/queue` for moderator triage (approve, ban, reject, escalate). Each decision records `ModerationEvent` rows for auditability.
+- `/moderation/stats` visualises weekly workload (flags reviewed, active bans, pending queue). `/moderation/user/[id]` shows individual history and allows unbanning.
+- Users see a yellow warning banner when they have outstanding warnings, and receive inline feedback if rate limits trigger (`Too many actions, try later`).
+- Seed data now includes sample flags, moderator accounts, and warning events so the moderation dashboard has meaningful fixtures out of the box.
+
+## Admin & Profiles
+
+- `/admin` delivers the consolidated admin console with tabs for users, audit logs, rate-limit settings, verification queue, and analytics snapshots (top posters, weekly growth, etc.).
+- Admin actions automatically generate `AuditLog` rows via the audit middleware so every role/tier change or setting update is traceable.
+- The seed creates a superuser (`root@euclid.network`, `ADMIN` role) plus legacy accounts (`@aristotle.euklid`, `@newton.euklid`, `@archimedes.euklid`) tagged as historical with legacy metadata.
+- Use the existing credentials provider (passcode defined in `.env`) or email magic link to sign in as the root admin during local testing.
+- Profiles now surface bios, websites, locations, expertise chips, mutual follows, and verification badges; historical imports display their provenance and works count.
+- Users can edit their bio/website/expertise from the profile page. Admins may impersonate any account (dev-only) via the “View / Edit” modal in `/admin/users` for debugging API flows.
 
 ## Continuous Integration
 

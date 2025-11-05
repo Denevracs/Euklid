@@ -2,7 +2,8 @@
   "extends": "../tsconfig/next.json",
   "compilerOptions": {
     "jsx": "preserve",
-    "outDir": "dist"
+    "outDir": "dist",
+    "moduleResolution": "NodeNext"
   },
   "include": ["src"]
 }

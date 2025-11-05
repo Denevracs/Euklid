@@ -15,9 +15,17 @@ import discussionsRoutes from './routes/discussions';
 import repliesRoutes from './routes/replies';
 import votesRoutes from './routes/votes';
 import feedRoutes from './routes/feed';
+import followRoutes from './routes/follow';
+import moderationRoutes from './routes/moderation';
+import adminRoutes from './routes/admin';
 import prismaPlugin from './plugins/prisma';
+import jwtPlugin from './plugins/jwt';
 import authTier from './plugins/authTier';
-import { env } from './lib/env';
+import auditLogger from './middleware/auditLogger';
+import authRoutes from './routes/auth';
+import verificationRoutes from './routes/verification';
+import profileRoutes from './routes/profile';
+import { env, allowedOrigins } from './lib/env';
 
 async function main() {
   const server = Fastify({
@@ -27,10 +35,15 @@ async function main() {
   server.setValidatorCompiler(validatorCompiler);
   server.setSerializerCompiler(serializerCompiler);
 
-  await server.register(cors);
+  await server.register(cors, {
+    origin: allowedOrigins,
+    credentials: true,
+  });
   await server.register(helmet);
   await server.register(prismaPlugin);
+  await server.register(jwtPlugin);
   await server.register(authTier);
+  await server.register(auditLogger);
 
   await server.register(swagger, {
     openapi: {
@@ -54,6 +67,12 @@ async function main() {
   await server.register(repliesRoutes, { prefix: '/replies' });
   await server.register(votesRoutes, { prefix: '/votes' });
   await server.register(feedRoutes, { prefix: '/feed' });
+  await server.register(followRoutes, { prefix: '/follow' });
+  await server.register(authRoutes, { prefix: '/auth' });
+  await server.register(verificationRoutes, { prefix: '/verification' });
+  await server.register(moderationRoutes, { prefix: '/moderation' });
+  await server.register(profileRoutes, { prefix: '/profile' });
+  await server.register(adminRoutes, { prefix: '/admin' });
 
   try {
     await server.listen({ port: env.PORT, host: env.HOST });

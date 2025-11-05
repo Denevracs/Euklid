@@ -18,10 +18,16 @@ export default async function evidenceRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const [actor] = await app.prisma.user.findMany({ take: 1 });
       const addedById = actor?.id ?? (await seedFallbackUser(app));
+      const payload = evidenceCreateSchema.parse(request.body);
       const evidence = await app.prisma.evidence.create({
         data: {
-          ...request.body,
-          addedById,
+          kind: payload.kind,
+          uri: payload.uri,
+          summary: payload.summary,
+          hash: payload.hash,
+          confidence: payload.confidence,
+          node: { connect: { id: payload.nodeId } },
+          addedBy: { connect: { id: addedById } },
         },
         include: { addedBy: true, node: true },
       });

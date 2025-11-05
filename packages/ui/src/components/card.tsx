@@ -1,9 +1,13 @@
+'use client';
+
 import * as React from 'react';
 import clsx from 'clsx';
 
-export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {}
+type DivProps = React.ComponentPropsWithoutRef<'div'>;
+type HeadingProps = React.ComponentPropsWithoutRef<'h3'>;
+type ParagraphProps = React.ComponentPropsWithoutRef<'p'>;
 
-export function Card({ className, ...props }: CardProps) {
+export function Card({ className, children, ...props }: React.PropsWithChildren<DivProps>) {
   return (
     <div
       className={clsx(
@@ -11,41 +15,59 @@ export function Card({ className, ...props }: CardProps) {
         className
       )}
       {...props}
-    />
+    >
+      {children}
+    </div>
   );
 }
 
-export interface CardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {}
-
-export function CardHeader({ className, ...props }: CardHeaderProps) {
-  return <div className={clsx('flex flex-col space-y-1.5 p-6', className)} {...props} />;
+export function CardHeader({ className, children, ...props }: React.PropsWithChildren<DivProps>) {
+  return (
+    <div className={clsx('flex flex-col space-y-1.5 p-6', className)} {...props}>
+      {children}
+    </div>
+  );
 }
 
-export interface CardTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {}
-
-export function CardTitle({ className, ...props }: CardTitleProps) {
+export function CardTitle({
+  className,
+  children,
+  ...props
+}: React.PropsWithChildren<HeadingProps>) {
   return (
     <h3
       className={clsx('text-2xl font-semibold leading-none tracking-tight', className)}
       {...props}
-    />
+    >
+      {children}
+    </h3>
   );
 }
 
-export interface CardDescriptionProps extends React.HTMLAttributes<HTMLParagraphElement> {}
-
-export function CardDescription({ className, ...props }: CardDescriptionProps) {
-  return <p className={clsx('text-sm text-muted-foreground', className)} {...props} />;
+export function CardDescription({
+  className,
+  children,
+  ...props
+}: React.PropsWithChildren<ParagraphProps>) {
+  return (
+    <p className={clsx('text-sm text-muted-foreground', className)} {...props}>
+      {children}
+    </p>
+  );
 }
 
-export interface CardContentProps extends React.HTMLAttributes<HTMLDivElement> {}
-
-export function CardContent({ className, ...props }: CardContentProps) {
-  return <div className={clsx('p-6 pt-0', className)} {...props} />;
+export function CardContent({ className, children, ...props }: React.PropsWithChildren<DivProps>) {
+  return (
+    <div className={clsx('p-6 pt-0', className)} {...props}>
+      {children}
+    </div>
+  );
 }
 
-export interface CardFooterProps extends React.HTMLAttributes<HTMLDivElement> {}
-
-export function CardFooter({ className, ...props }: CardFooterProps) {
-  return <div className={clsx('flex items-center p-6 pt-0', className)} {...props} />;
+export function CardFooter({ className, children, ...props }: React.PropsWithChildren<DivProps>) {
+  return (
+    <div className={clsx('flex items-center p-6 pt-0', className)} {...props}>
+      {children}
+    </div>
+  );
 }

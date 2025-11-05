@@ -1,7 +1,1 @@
-import NextAuth from 'next-auth';
-import { authConfig } from '@/lib/auth';
-
-const handler = NextAuth(authConfig);
-
-export { handler as GET, handler as POST };
-export const authOptions = authConfig;
+export { GET, POST, auth, authOptions } from '@/server/auth';

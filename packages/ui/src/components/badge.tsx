@@ -1,3 +1,5 @@
+'use client';
+
 import * as React from 'react';
 import clsx from 'clsx';
 
@@ -11,7 +13,12 @@ const variantStyles: Record<NonNullable<BadgeProps['variant']>, string> = {
   outline: 'border border-border text-foreground',
 };
 
-export function Badge({ className, variant = 'default', ...props }: BadgeProps) {
+export function Badge({
+  className,
+  variant = 'default',
+  children,
+  ...props
+}: React.PropsWithChildren<BadgeProps>) {
   return (
     <span
       className={clsx(
@@ -20,6 +27,8 @@ export function Badge({ className, variant = 'default', ...props }: BadgeProps) 
         className
       )}
       {...props}
-    />
+    >
+      {children}
+    </span>
   );
 }

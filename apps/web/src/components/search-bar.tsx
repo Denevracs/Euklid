@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
-import { Button } from '@euclid/ui';
+import { Button } from '@/components/ui/button';
 
 export function SearchBar() {
   const router = useRouter();

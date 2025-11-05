@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { ReputationTier } from '@prisma/client';
+import { Tier } from '@prisma/client';
+import { rateLimit } from '../middleware/rateLimit';
+import { moderationGuard } from '../middleware/moderationGuard';
+import { autoFlagDetection } from '../services/moderation';
 
 const createDiscussionSchema = z.object({
   nodeId: z.string().uuid('nodeId must be a valid uuid').or(z.string().min(1)),
@@ -16,12 +19,13 @@ const paramsByNodeSchema = z.object({
   nodeId: z.string().uuid('nodeId must be a valid uuid').or(z.string().min(1)),
 });
 
-function isModerator(tier: ReputationTier) {
-  return tier === ReputationTier.TIER1 || tier === ReputationTier.TIER2;
+function isModerator(tier: Tier) {
+  return tier === Tier.TIER1 || tier === Tier.TIER2;
 }
 
 export default async function discussionsRoutes(app: FastifyInstance) {
   const r = app.withTypeProvider<ZodTypeProvider>();
+  const enforceDiscussionRateLimit = rateLimit('POST_DISCUSSION_LIMIT');
 
   r.get(
     '/node/:nodeId',
@@ -77,23 +81,43 @@ export default async function discussionsRoutes(app: FastifyInstance) {
   r.post(
     '/',
     {
+      onRequest: [
+        app.authenticate,
+        moderationGuard,
+        app.requireNotBanned,
+        enforceDiscussionRateLimit,
+      ],
       schema: {
         body: createDiscussionSchema,
       },
     },
     async (request, reply) => {
-      if (!request.user) {
+      const user = request.user;
+      if (!user?.id) {
         return reply.code(401).send({ message: 'Unauthorized' });
       }
-      const { nodeId, content } = request.body;
+      const { nodeId, content } = createDiscussionSchema.parse(request.body);
       try {
         const discussion = await app.prisma.discussion.create({
           data: {
             nodeId,
             content,
-            authorId: request.user.id,
+            authorId: user.id,
           },
         });
+        await app.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            discussionCount: { increment: 1 },
+            lastActionAt: new Date(),
+          },
+        });
+        if (autoFlagDetection(content)) {
+          request.log.warn(
+            { discussionId: discussion.id },
+            'Auto-flag detection triggered for discussion content'
+          );
+        }
         return reply.code(201).send(discussion);
       } catch (error) {
         request.log.error(error);
@@ -105,6 +129,7 @@ export default async function discussionsRoutes(app: FastifyInstance) {
   r.patch(
     '/:id/hide',
     {
+      onRequest: [app.authenticate, moderationGuard, app.requireNotBanned],
       schema: {
         params: paramsByIdSchema,
       },
@@ -129,6 +154,7 @@ export default async function discussionsRoutes(app: FastifyInstance) {
   r.delete(
     '/:id',
     {
+      onRequest: [app.authenticate, moderationGuard, app.requireNotBanned],
       schema: {
         params: paramsByIdSchema,
       },

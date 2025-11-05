@@ -48,8 +48,8 @@ type ForceGraphLink = GraphLinkDatum & {
 export function GraphViewer({ data }: { data: GraphData }) {
   const memoData = useMemo(() => data, [data]);
 
-  const handleNodeClick = useCallback((node: Pick<ForceGraphNode, 'id'>) => {
-    if (node.id) {
+  const handleNodeClick = useCallback((node: { id?: string | number }) => {
+    if (typeof node.id === 'string') {
       window.location.href = `/nodes/${node.id}`;
     }
   }, []);
@@ -59,12 +59,8 @@ export function GraphViewer({ data }: { data: GraphData }) {
       <ForceGraph2D
         graphData={memoData}
         backgroundColor="transparent"
-        nodeAutoColorBy={(node: ForceGraphNode) => typeColors[node.type as NodeType] ?? '#64748b'}
-        nodeCanvasObject={(
-          node: ForceGraphNode,
-          ctx: CanvasRenderingContext2D,
-          globalScale: number
-        ) => {
+        nodeCanvasObject={(rawNode, ctx, globalScale) => {
+          const node = rawNode as ForceGraphNode;
           const label = node.name;
           const fontSize = 12 / globalScale;
           const radius = 6;
@@ -80,7 +76,7 @@ export function GraphViewer({ data }: { data: GraphData }) {
         }}
         linkColor={() => '#94a3b8'}
         linkDirectionalParticles={2}
-        linkDirectionalParticleWidth={(link: ForceGraphLink) => (link.weight ?? 1) * 2}
+        linkDirectionalParticleWidth={(link) => ((link as ForceGraphLink).weight ?? 1) * 2}
         onNodeClick={handleNodeClick}
       />
     </div>

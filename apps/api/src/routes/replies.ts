@@ -1,7 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { ReputationTier } from '@prisma/client';
+import { Tier } from '@prisma/client';
+import { rateLimit } from '../middleware/rateLimit';
+import { moderationGuard } from '../middleware/moderationGuard';
+import { autoFlagDetection } from '../services/moderation';
 
 const createReplyBody = z.object({
   discussionId: z.string().uuid('discussionId must be uuid').or(z.string().min(1)),
@@ -16,14 +19,16 @@ const replyParams = z.object({
   id: z.string().uuid('id must be uuid').or(z.string().min(1)),
 });
 
-const moderatorTiers = new Set<ReputationTier>([ReputationTier.TIER1, ReputationTier.TIER2]);
+const moderatorTiers = new Set<Tier>([Tier.TIER1, Tier.TIER2]);
 
 export default async function repliesRoutes(app: FastifyInstance) {
   const r = app.withTypeProvider<ZodTypeProvider>();
+  const enforceCommentRateLimit = rateLimit('POST_COMMENT_LIMIT');
 
   r.post(
     '/',
     {
+      onRequest: [app.authenticate, moderationGuard, app.requireNotBanned, enforceCommentRateLimit],
       schema: { body: createReplyBody },
     },
     async (request, reply) => {
@@ -31,14 +36,21 @@ export default async function repliesRoutes(app: FastifyInstance) {
       if (!user) {
         return reply.code(401).send({ message: 'Unauthorized' });
       }
+      const { discussionId, content } = createReplyBody.parse(request.body);
       try {
         const newReply = await app.prisma.reply.create({
           data: {
-            discussionId: request.body.discussionId,
-            content: request.body.content,
+            discussionId,
+            content,
             authorId: user.id,
           },
         });
+        if (autoFlagDetection(content)) {
+          request.log.warn(
+            { replyId: newReply.id },
+            'Auto-flag detection triggered for reply content'
+          );
+        }
         return reply.code(201).send(newReply);
       } catch (error) {
         request.log.error(error);
@@ -67,6 +79,7 @@ export default async function repliesRoutes(app: FastifyInstance) {
   r.delete(
     '/:id',
     {
+      onRequest: [app.authenticate, moderationGuard, app.requireNotBanned],
       schema: { params: replyParams },
     },
     async (request, reply) => {
